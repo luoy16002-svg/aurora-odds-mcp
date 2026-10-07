@@ -4,7 +4,8 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { z } from "zod";
+// zod v4 renders nullable fields as anyOf branches, which more MCP clients accept than type arrays.
+import { z } from "zod/v4";
 import { assessNow, planTonight, spaceWeather } from "./report.ts";
 import { liveSources, NOWCAST_URL, type Sources, type Place } from "./sources.ts";
 
