@@ -1,0 +1,4 @@
+# Cloudflare Pages, advanced mode: site/_worker.js answers /mcp and /health, everything else is the static page.
+name = "aurora-odds-mcp"
+pages_build_output_dir = "site"
+compatibility_date = "2025-12-01"
