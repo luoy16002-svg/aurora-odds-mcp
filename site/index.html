@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aurora Odds for Alexa+</title>
+<meta name="description" content="An MCP server that tells a voice assistant whether the northern lights are worth going outside for, in your town, right now or tonight.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>
+:root {
+  --bg: #070b12; --bg-2: #0b111b; --panel: #0e1520; --panel-2: #121b28; --line: #1b2533;
+  --text: #e7edf4; --muted: #8b98a9; --faint: #5d6a7b; --accent: #7fe0ab; --accent-ink: #062014; --warn: #e9c46a;
+  --radius: 18px; --radius-s: 12px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 400 16px/1.6 "Hanken Grotesk", system-ui, sans-serif; font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 3px; }
+code, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.86em; }
+button, input { font: inherit; color: inherit; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+/* header */
+header { position: sticky; top: 0; z-index: 5; backdrop-filter: blur(10px); background: rgba(7, 11, 18, 0.72); border-bottom: 1px solid var(--line); }
+header .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 700; letter-spacing: -0.01em; }
+.brand img { width: 28px; height: 28px; }
+.brand span { color: var(--muted); font-weight: 500; }
+nav { display: flex; gap: 22px; font-size: 15px; }
+nav a { color: var(--muted); }
+nav a:hover { color: var(--text); text-decoration: none; }
+
+/* sky behind the hero */
+.sky { position: relative; overflow: hidden; }
+.sky::before {
+  content: ""; position: absolute; inset: -20% -10% auto -10%; height: 520px; pointer-events: none;
+  background:
+    radial-gradient(60% 50% at 30% 30%, rgba(127, 224, 171, 0.16), transparent 70%),
+    radial-gradient(40% 35% at 75% 20%, rgba(96, 165, 250, 0.10), transparent 70%);
+  filter: blur(8px);
+}
+.hero { position: relative; display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; padding-top: 72px; padding-bottom: 56px; align-items: start; }
+.hero > *, .two > * { min-width: 0; }
+.eyebrow { display: inline-flex; gap: 8px; align-items: center; padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 13px; background: rgba(14, 21, 32, 0.7); }
+.eyebrow i { color: var(--accent); }
+h1 { font-size: clamp(36px, 5vw, 56px); line-height: 1.05; letter-spacing: -0.035em; margin: 22px 0 18px; font-weight: 800; text-wrap: balance; }
+h1 em { font-style: normal; color: var(--accent); }
+.lede { color: var(--muted); font-size: 18px; max-width: 34em; margin: 0 0 28px; text-wrap: pretty; }
+.facts { display: flex; flex-wrap: wrap; gap: 10px 22px; color: var(--faint); font-size: 14px; }
+.facts b { color: var(--text); font-weight: 600; }
+
+/* the console */
+.console { background: linear-gradient(180deg, var(--panel-2), var(--panel)); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35); }
+.console h2 { font-size: 15px; font-weight: 600; margin: 0 0 14px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.ask { display: flex; gap: 10px; }
+.mic {
+  flex: 0 0 52px; height: 52px; border-radius: 50%; border: 1px solid var(--line); background: var(--bg-2);
+  display: grid; place-items: center; cursor: pointer; font-size: 22px; color: var(--accent); transition: transform .15s, background .2s;
+}
+.mic:hover { background: #142030; }
+.mic:active { transform: scale(0.96); }
+.mic.on { background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 6px rgba(127, 224, 171, 0.18); animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 12px rgba(127, 224, 171, 0.08); } }
+.ask form { flex: 1; min-width: 0; display: flex; border: 1px solid var(--line); border-radius: 999px; background: var(--bg-2); padding: 4px 4px 4px 18px; }
+.ask input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; }
+.ask input::placeholder { color: var(--faint); }
+.ask .go { border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-weight: 700; padding: 0 18px; cursor: pointer; }
+.ask .go:active { transform: translateY(1px); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
+.chip { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 999px; padding: 6px 12px; font-size: 13.5px; cursor: pointer; }
+.chip:hover { color: var(--text); border-color: #2a3a4f; }
+.turns { margin-top: 18px; display: grid; gap: 14px; min-height: 120px; }
+.turn { display: grid; gap: 6px; }
+.who { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); }
+.you { color: var(--text); }
+.reply { font-size: 17.5px; line-height: 1.55; }
+.reply.wait { color: var(--faint); }
+.reply.err { color: var(--warn); }
+.trace { font-family: "JetBrains Mono", monospace; font-size: 12.5px; color: var(--faint); background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 8px 12px; overflow-x: auto; white-space: nowrap; }
+.trace b { color: var(--accent); font-weight: 500; }
+.cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.card { border: 1px solid var(--line); border-radius: var(--radius-s); padding: 10px 12px; background: var(--bg-2); }
+.card .k { font-size: 12px; color: var(--faint); }
+.card .v { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.card .s { font-size: 12px; color: var(--muted); }
+.card.good .v { color: var(--accent); }
+.note { margin-top: 16px; font-size: 13px; color: var(--faint); }
+.empty { color: var(--faint); font-size: 15px; display: flex; align-items: center; gap: 10px; }
+
+/* sections */
+section.band { border-top: 1px solid var(--line); padding: 72px 0; }
+.two { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 56px; align-items: start; }
+h3 { font-size: 30px; letter-spacing: -0.025em; line-height: 1.15; margin: 0 0 14px; text-wrap: balance; }
+.band p { color: var(--muted); max-width: 36em; }
+.endpoint { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--panel); padding: 10px 10px 10px 16px; margin: 20px 0 14px; }
+.endpoint code { flex: 1; min-width: 0; color: var(--text); overflow-x: auto; white-space: nowrap; }
+.copy { border: 1px solid var(--line); background: var(--bg-2); border-radius: 10px; padding: 6px 12px; cursor: pointer; color: var(--muted); font-size: 13px; }
+.copy:hover { color: var(--text); }
+pre { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 16px; overflow-x: auto; font-size: 13px; line-height: 1.55; color: #c9d4e0; }
+.tools { display: grid; gap: 12px; }
+.tool { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 18px 20px; display: grid; grid-template-columns: 40px 1fr; gap: 14px; }
+.tool i { font-size: 24px; color: var(--accent); margin-top: 2px; }
+.tool h4 { margin: 0; font-size: 16px; font-family: "JetBrains Mono", monospace; font-weight: 500; }
+.tool p { margin: 4px 0 6px; font-size: 15px; }
+.tool .q { font-size: 14px; color: var(--faint); font-style: italic; }
+.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 28px; }
+.step { border-top: 2px solid var(--line); padding-top: 14px; }
+.step .n { font-family: "JetBrains Mono", monospace; color: var(--accent); font-size: 13px; }
+.step h4 { margin: 6px 0 6px; font-size: 16px; }
+.step p { font-size: 14.5px; margin: 0; }
+footer { border-top: 1px solid var(--line); padding: 32px 0 48px; color: var(--faint); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; }
+
+@media (max-width: 900px) {
+  .hero, .two { grid-template-columns: 1fr; gap: 32px; }
+  .hero { padding-top: 44px; }
+  .steps { grid-template-columns: 1fr 1fr; }
+  nav { display: none; }
+}
+@media (max-width: 560px) {
+  .wrap { padding: 0 16px; }
+  .cards { grid-template-columns: 1fr 1fr; }
+  .steps { grid-template-columns: 1fr; }
+  .console { padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .mic.on { animation: none; } html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="favicon.svg" alt="">Aurora Odds <span>for Alexa+</span></a>
+    <nav><a href="#connect">Connect</a><a href="#tools">Tools</a><a href="#how">How it works</a><a href="https://github.com/luoy16002-svg/aurora-odds-mcp">GitHub</a></nav>
+  </div>
+</header>
+
+<main>
+  <div class="sky">
+    <div class="wrap hero">
+      <div>
+        <span class="eyebrow"><i class="ph ph-plugs-connected"></i>MCP server · spec 2025-11-25 · Streamable HTTP</span>
+        <h1>Ask out loud if the northern lights are <em>worth going out for.</em></h1>
+        <p class="lede">Aurora Odds reads the solar wind that is already on its way to Earth and answers for your town, in one sentence you can hear: go outside now, bring your phone, or stay in. It is an MCP server, so a voice assistant like Alexa+ can call it.</p>
+        <div class="facts"><span><b>3</b> read-only tools</span><span><b>Every 10 min</b> new forecast</span><span><b>Any town</b> on Earth, north or south</span><span><b>No key</b> needed</span></div>
+      </div>
+
+      <div class="console" aria-live="polite">
+        <h2><i class="ph ph-waveform"></i>Try it: speak, type, or tap a question</h2>
+        <div class="ask">
+          <button class="mic" id="mic" type="button" aria-label="Ask with your voice"><i class="ph ph-microphone"></i></button>
+          <form id="form"><input id="q" autocomplete="off" placeholder="Can I see the northern lights in Edinburgh right now?" aria-label="Your question"><button class="go" type="submit">Ask</button></form>
+        </div>
+        <div class="chips">
+          <button class="chip" type="button">Can I see the aurora in Fairbanks right now?</button>
+          <button class="chip" type="button">When should I go out tonight in Tromsø?</button>
+          <button class="chip" type="button">What is the Sun doing?</button>
+          <button class="chip" type="button">Southern lights in Hobart tonight?</button>
+        </div>
+        <div class="turns" id="turns"><div class="empty"><i class="ph ph-moon-stars"></i>Answers appear here and are read aloud.</div></div>
+        <p class="note">Alexa+ picks the tool with its own language model. This page routes your words with a few keywords, so you can try the same MCP server without an account.</p>
+      </div>
+    </div>
+  </div>
+
+  <section class="band" id="connect">
+    <div class="wrap two">
+      <div>
+        <h3>Connect any MCP client</h3>
+        <p>One Streamable HTTP endpoint, stateless, no sign-in. Every tool returns a <code>speech</code> string written to be read aloud as it is, plus structured content with the numbers behind it.</p>
+        <div class="endpoint"><code id="ep">https://aurora-odds-mcp.pages.dev/mcp</code><button class="copy" id="copy" type="button">Copy</button></div>
+        <p>Self-host it with <code>npm run dev</code>, or deploy the same file to Cloudflare. The visibility maths is a separate open-source library, <a href="https://github.com/luoy16002-svg/aurora-sky">aurora-sky</a>.</p>
+      </div>
+      <pre id="config">{
+  "mcpServers": {
+    "aurora-odds": {
+      "type": "http",
+      "url": "https://aurora-odds-mcp.pages.dev/mcp"
+    }
+  }
+}</pre>
+    </div>
+  </section>
+
+  <section class="band" id="tools">
+    <div class="wrap two">
+      <div>
+        <h3>Three questions people actually ask</h3>
+        <p>Alerts say "G2" and "Kp 6". People want to know if it is worth putting their shoes on. Each tool answers one version of that question and nothing else.</p>
+      </div>
+      <div class="tools">
+        <div class="tool"><i class="ph ph-eye"></i><div><h4>check_aurora_now</h4><p>The chance the aurora is bright enough for your eyes and for a phone camera in the next hour, whether it is dark, how cloudy it is, and which way and how high to look.</p><div class="q">"Can I see the northern lights right now?"</div></div></div>
+        <div class="tool"><i class="ph ph-clock-countdown"></i><div><h4>plan_aurora_tonight</h4><p>Hour by hour until dawn: darkness, expected activity and cloud, and the best window to go out.</p><div class="q">"When should I go out tonight?"</div></div></div>
+        <div class="tool"><i class="ph ph-sun-horizon"></i><div><h4>explain_space_weather</h4><p>What the solar wind is doing, the chance of a storm in the next hour, and the peak of NOAA's three-day outlook, in plain words.</p><div class="q">"Is there a solar storm coming?"</div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="how">
+    <div class="wrap">
+      <h3>How an answer is made</h3>
+      <div class="steps">
+        <div class="step"><div class="n">01</div><h4>The wind on its way</h4><p>Spacecraft at L1 measure the solar wind 30 to 60 minutes before it reaches Earth. NOAA publishes it every minute.</p></div>
+        <div class="step"><div class="n">02</div><h4>A forecast model</h4><p>TabPFN, an open-weights foundation model, turns it into a probability for every activity level in the next hour. It reruns every ten minutes.</p></div>
+        <div class="step"><div class="n">03</div><h4>Your sky</h4><p>Corrected magnetic latitude, how far the light is visible, how high the arc stands, when it gets dark, and how cloudy it is.</p></div>
+        <div class="step"><div class="n">04</div><h4>One sentence</h4><p>The MCP tool returns a verdict worth saying out loud, and the numbers for anyone who wants them.</p></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Made by Kai Chen · MIT licence · Code: <a href="https://github.com/luoy16002-svg/aurora-odds-mcp">aurora-odds-mcp</a>, <a href="https://github.com/luoy16002-svg/aurora-sky">aurora-sky</a>, <a href="https://github.com/luoy16002-svg/aurora-odds">aurora-odds</a></span>
+    <span>Data: NOAA SWPC, GFZ Potsdam Hp30, NASA OMNI, Open-Meteo · An independent entry to the Amazon Developer Hackathon, not an Amazon product</span>
+  </div>
+</footer>
+
+<script>
+const ENDPOINT = `${location.origin}/mcp`;
+document.getElementById("ep").textContent = ENDPOINT;
+document.getElementById("config").textContent = JSON.stringify({ mcpServers: { "aurora-odds": { type: "http", url: ENDPOINT } } }, null, 2);
+
+// ---- a minimal MCP client: JSON-RPC over Streamable HTTP ----
+let nextId = 1;
+let ready = null;
+async function rpc(method, params, notify = false) {
+  const body = notify ? { jsonrpc: "2.0", method, params } : { jsonrpc: "2.0", id: nextId++, method, params };
+  const r = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json, text/event-stream", "mcp-protocol-version": "2025-11-25" },
+    body: JSON.stringify(body),
+  });
+  if (notify) return null;
+  const text = await r.text();
+  // The server answers with JSON; accept an SSE frame too, as the spec allows either.
+  const json = text.startsWith("{") ? JSON.parse(text) : JSON.parse(text.split("\n").find((l) => l.startsWith("data:")).slice(5));
+  if (json.error) throw new Error(json.error.message);
+  return json.result;
+}
+function connect() {
+  ready ??= rpc("initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "aurora-odds-web", version: "1.0.0" } })
+    .then(() => rpc("notifications/initialized", {}, true));
+  return ready;
+}
+
+// ---- turning words into a tool call (Alexa+ would do this with its own model) ----
+function route(text) {
+  const t = text.trim();
+  const lower = t.toLowerCase();
+  let tool = "check_aurora_now";
+  if (/\b(tonight|this evening|later|when should|best time|what time)\b/.test(lower)) tool = "plan_aurora_tonight";
+  const placeMatch = t.match(/\b(?:in|at|from|near|over|for)\s+([A-ZÀ-Þ][\p{L}'’.\- ]*(?:,\s*[\p{L}'’.\- ]+)?)/u);
+  let place = placeMatch ? placeMatch[1] : null;
+  if (place) place = place.replace(/\b(right now|now|tonight|today|this evening|later)\b.*$/i, "").replace(/[?.!]+$/, "").trim();
+  if (!place && /\b(sun|solar|storm|space weather|kp|geomagnetic)\b/.test(lower)) tool = "explain_space_weather";
+  const here = /\b(here|my location|where i am|outside)\b/.test(lower) && !place;
+  return { tool, place, here };
+}
+function locate() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition((p) => resolve({ latitude: +p.coords.latitude.toFixed(3), longitude: +p.coords.longitude.toFixed(3) }), () => resolve(null), { timeout: 8000 });
+  });
+}
+
+// ---- speech ----
+let voice = null;
+function pickVoice() {
+  const voices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
+  voice = voices.find((v) => /Google UK English Female|Samantha|Serena|Aria|Jenny/.test(v.name)) || voices[0] || null;
+}
+if ("speechSynthesis" in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+function say(text) {
+  if (!("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  if (voice) u.voice = voice;
+  u.rate = 1.02;
+  speechSynthesis.speak(u);
+}
+
+// ---- rendering ----
+const turns = document.getElementById("turns");
+const pct = (p) => (p == null ? "–" : p < 0.01 ? "<1%" : p > 0.99 ? ">99%" : `${Math.round(p * 100)}%`);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function cardsFor(tool, s) {
+  if (!s) return "";
+  const card = (k, v, sub, good) => `<div class="card${good ? " good" : ""}"><div class="k">${k}</div><div class="v">${esc(v)}</div><div class="s">${esc(sub)}</div></div>`;
+  if (tool === "check_aurora_now") {
+    return `<div class="cards">${[
+      card("By eye", pct(s.chance_eyes), `next hour · needs Kp ${s.kp_needed_eyes}`, s.chance_eyes >= 0.25),
+      card("Phone camera", pct(s.chance_camera), `needs Kp ${s.kp_needed_camera}`, s.chance_camera >= 0.35),
+      card("Sky", s.dark ? "Dark" : "Light",
+        [s.dark ? null : s.dark_from_local ? `dark at ${s.dark_from_local}` : "no night today", s.cloud_cover_pct == null ? null : `${s.cloud_cover_pct}% cloud`].filter(Boolean).join(" · ") || "clear enough",
+        s.dark && (s.cloud_cover_pct ?? 0) < 70),
+      card("Look", s.look.compass, s.look.overhead ? "overhead" : s.look.visible ? `edge ${Math.max(0, Math.round(s.look.lowerDeg))}° up` : "below the horizon", false),
+    ].join("")}</div>`;
+  }
+  if (tool === "plan_aurora_tonight") {
+    const w = s.best_window;
+    return `<div class="cards">${[
+      card("Dark", s.dark_from_local ?? "–", s.dark_until_local ? `until ${s.dark_until_local}` : "", !!s.dark_from_local),
+      card("Needs", `Kp ${s.kp_needed_eyes}`, `camera Kp ${s.kp_needed_camera}`, false),
+      card("Best window", w ? `${w.from_local}` : "None", w ? `to ${w.to_local}` : "quiet night", !!w && w.enough_for !== "neither"),
+      card("Peak", w ? `Kp ${w.kp_expected}` : "–", w && w.cloud_cover_pct != null ? `${w.cloud_cover_pct}% cloud` : "", false),
+    ].join("")}</div>`;
+  }
+  return `<div class="cards">${[
+    card("Wind", `${s.solar_wind.speed_km_s} km/s`, `${s.solar_wind.density_cm3} per cm³`, false),
+    card("Bz", `${s.solar_wind.bz_nt} nT`, s.solar_wind.bz_nt < -1 ? "southward" : "not southward", s.solar_wind.bz_nt < -5),
+    card("Next hour", `Kp ${s.next_hour.expected_kp}`, `storm ${pct(s.next_hour.chance_kp5_or_more)}`, s.next_hour.expected_kp >= 5),
+    card("NOAA 3-day", s.noaa.max_kp_next_72h == null ? "–" : `Kp ${s.noaa.max_kp_next_72h}`, "peak", (s.noaa.max_kp_next_72h ?? 0) >= 5),
+  ].join("")}</div>`;
+}
+async function ask(text) {
+  if (!text.trim()) return;
+  if (turns.querySelector(".empty")) turns.innerHTML = "";
+  const turn = document.createElement("div");
+  turn.className = "turn";
+  turn.innerHTML = `<div class="who">You</div><div class="you">${esc(text)}</div><div class="who">Aurora Odds</div><div class="reply wait">Checking the sky…</div>`;
+  turns.prepend(turn);
+  const reply = turn.querySelector(".reply");
+  const { tool, place, here } = route(text);
+  const args = {};
+  if (place) args.place = place;
+  if (here) Object.assign(args, (await locate()) ?? {});
+  const t0 = performance.now();
+  try {
+    await connect();
+    const result = await rpc("tools/call", { name: tool, arguments: args });
+    const ms = Math.round(performance.now() - t0);
+    const speech = result.content?.[0]?.text ?? "";
+    reply.className = result.isError ? "reply err" : "reply";
+    reply.textContent = speech;
+    turn.insertAdjacentHTML("beforeend", `<div class="trace">tools/call <b>${tool}</b> ${esc(JSON.stringify(args))} · ${ms} ms</div>${result.isError ? "" : cardsFor(tool, result.structuredContent)}`);
+    say(speech);
+  } catch (e) {
+    reply.className = "reply err";
+    reply.textContent = `Something went wrong reaching the server: ${e.message}`;
+  }
+}
+
+document.getElementById("form").addEventListener("submit", (e) => { e.preventDefault(); const q = document.getElementById("q"); ask(q.value); q.value = ""; });
+document.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => ask(c.textContent)));
+document.getElementById("copy").addEventListener("click", async (e) => {
+  try { await navigator.clipboard.writeText(ENDPOINT); e.target.textContent = "Copied"; setTimeout(() => (e.target.textContent = "Copy"), 1500); } catch { /* clipboard blocked */ }
+});
+
+// ---- voice input ----
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const mic = document.getElementById("mic");
+if (!Recognition) {
+  mic.title = "Voice input needs Chrome or Edge; type your question instead.";
+  mic.disabled = true;
+  mic.style.opacity = 0.4;
+} else {
+  const rec = new Recognition();
+  rec.lang = "en-US";
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+  rec.onresult = (e) => ask(e.results[0][0].transcript);
+  rec.onend = () => mic.classList.remove("on");
+  rec.onerror = () => mic.classList.remove("on");
+  mic.addEventListener("click", () => {
+    if (mic.classList.contains("on")) return rec.stop();
+    if ("speechSynthesis" in window) speechSynthesis.cancel();
+    mic.classList.add("on");
+    rec.start();
+  });
+}
+</script>
+</body>
+</html>
