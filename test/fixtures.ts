@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import type { Sources, Nowcast, KpBlock, Weather } from "../src/sources.ts";
 
 export const load = (name: string) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf-8")) as Nowcast;
-export const storm = load("storm-2024-05-10.json");
+export const storm = JSON.parse(readFileSync(new URL("../src/replays/may-2024.json", import.meta.url), "utf-8")) as Nowcast;
 export const quiet = load("quiet-2026-10-07.json");
 
 export const PLACES: Record<string, { name: string; country: string; latitude: number; longitude: number }> = {

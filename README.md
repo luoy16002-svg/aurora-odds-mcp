@@ -8,10 +8,11 @@ Space-weather alerts say things like "G2 watch, Kp 6 expected". That doesn't tel
 >
 > "Yes, go outside now. There's about a 95 percent chance the northern lights are bright enough to see with your eyes in Edinburgh over the next hour. Look north and straight up: at this level the aurora can spread across the whole sky."
 >
-> *(the answer for 10 May 2024 at 11 pm, replayed from the test fixtures)*
+> *(the answer for 10 May 2024 at 11 pm, from the replay endpoint below)*
 
 - **Try it:** https://aurora-odds-mcp.pages.dev. Speak or type a question; a language model picks the tool, the MCP server answers, and the page reads the answer aloud.
 - **Endpoint:** `https://aurora-odds-mcp.pages.dev/mcp`. Streamable HTTP, MCP spec `2025-11-25`, stateless, no key.
+- **Replay:** `https://aurora-odds-mcp.pages.dev/replay/may2024/mcp` serves the same tools on the night of the May 2024 superstorm, with the forecast the model made at 22:00 UTC and the clock stopped there. The page does the same at https://aurora-odds-mcp.pages.dev/?replay=may2024, so you can hear a "go outside" answer on a quiet night.
 - **Built for:** Alexa+ and any other MCP client.
 
 ## Tools
@@ -80,7 +81,7 @@ Node 22.18 or later (the source is TypeScript that Node runs directly).
 
 ```sh
 npm install
-npm test           # 18 tests: MCP over an in-memory client, and the voice host over Streamable HTTP, with recorded data
+npm test           # 20 tests: MCP over an in-memory client, and the voice host over Streamable HTTP, with recorded data
 npm run dev        # http://localhost:8787 (page) and http://localhost:8787/mcp (endpoint); no model here, so the page uses keywords
 node test/live-smoke.ts                                   # asks the local server five real questions
 MCP_URL=https://aurora-odds-mcp.pages.dev/mcp node test/live-smoke.ts   # or the deployed one
@@ -114,7 +115,8 @@ src/
   assistant.ts the voice host: a model picks the tool, an MCP client calls it
   report.ts    numbers -> verdict -> speech
   sources.ts   forecast, NOAA Kp, Open-Meteo, with timeouts, retry and cache
-  worker.ts    Streamable HTTP endpoint (stateless, JSON responses, CORS), /assistant, /health, static page
+  worker.ts    Streamable HTTP endpoints (stateless, JSON responses, CORS), /assistant, /health, static page
+  replay.ts    recorded nights for /replay/<name>/mcp (src/replays/may-2024.json)
   dev.ts       local server on Node
 site/          the demo page (index.html) and the built worker
 test/          MCP and assistant tests with fixtures (the May 2024 superstorm, a quiet October day), a live smoke
