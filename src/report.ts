@@ -339,7 +339,7 @@ export function spaceWeather(args: { nowcast: Nowcast; kp: KpBlock[]; at?: Date 
   const southward = w.bz < -5 ? "pointing strongly south, which is what drives the aurora" : w.bz < -1 ? "pointing slightly south" : w.bz > 1 ? "pointing north, which keeps the energy out" : "close to neutral";
   const pace = w.speed > 600 ? "fast" : w.speed > 450 ? "a little fast" : "calm";
   const parts = [
-    `The solar wind is ${pace}: about ${Math.round(w.speed / 10) * 10} kilometres per second, with its magnetic field ${southward} at ${w.bz.toFixed(1)} nanotesla.`,
+    `The solar wind is ${pace}: about ${Math.round(w.speed / 10) * 10} kilometres per second, with its magnetic field at ${w.bz.toFixed(1)} nanotesla, ${southward}.`,
     `The next ${Math.round(w.ahead_minutes)} minutes of it are already measured on their way to Earth. For the next hour I expect activity around Kp ${median.toFixed(1)}, with ${spokenChance(p5)} of a minor storm or stronger.`,
   ];
   const max72 = max(within(72));

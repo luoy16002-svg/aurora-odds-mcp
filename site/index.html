@@ -78,6 +78,14 @@ h1 em { font-style: normal; color: var(--accent); }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
 .chip { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 999px; padding: 6px 12px; font-size: 13.5px; cursor: pointer; }
 .chip:hover { color: var(--text); border-color: #2a3a4f; }
+.replay-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 26px; font-size: 15px; color: var(--accent); }
+.replay-link i { font-size: 18px; }
+.replay-link[hidden] { display: none; }
+.banner { display: flex; gap: 10px; align-items: flex-start; margin: -4px 0 16px; padding: 10px 12px; border-radius: var(--radius-s); background: rgba(127, 224, 171, 0.08); border: 1px solid rgba(127, 224, 171, 0.25); font-size: 13.5px; color: var(--muted); }
+.banner[hidden] { display: none; }
+.banner i { color: var(--accent); font-size: 17px; margin-top: 1px; }
+.banner b { color: var(--text); font-weight: 600; }
+.banner a { margin-left: auto; white-space: nowrap; }
 .where { margin: 6px 0 0; border: 0; background: none; color: var(--faint); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; padding: 4px 0; }
 .where:hover { color: var(--muted); }
 .where[aria-pressed="true"] { color: var(--accent); }
@@ -156,9 +164,11 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
         <h1>Ask out loud if the northern lights are <em>worth going out for.</em></h1>
         <p class="lede">Aurora Odds reads the solar wind that is already on its way to Earth and answers for your town, in one sentence you can hear: go outside now, bring your phone, or stay in. It is an MCP server, so a voice assistant like Alexa+ can call it.</p>
         <div class="facts"><span><b>3</b> read-only tools</span><span><b>Every 10 min</b> new forecast</span><span><b>Any town</b> on Earth, north or south</span><span><b>No key</b> needed</span></div>
+        <a class="replay-link" id="replay-link" href="?replay=may2024"><i class="ph ph-clock-counter-clockwise"></i>Quiet sky tonight? Hear the night of the May 2024 superstorm</a>
       </div>
 
       <div class="console" aria-live="polite">
+        <div class="banner" id="banner" hidden><i class="ph ph-clock-counter-clockwise"></i><span>Replaying <b>10 May 2024, 22:00 UTC</b> with the forecast the model made that night. Clouds from that night aren't stored.</span><a href="./">Back to tonight</a></div>
         <h2><i class="ph ph-waveform"></i>Try it: speak, type, or tap a question</h2>
         <div class="ask">
           <button class="mic" id="mic" type="button" aria-label="Ask with your voice"><i class="ph ph-microphone"></i></button>
@@ -231,9 +241,18 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
 </footer>
 
 <script>
-const ENDPOINT = `${location.origin}/mcp`;
-document.getElementById("ep").textContent = ENDPOINT;
-document.getElementById("config").textContent = JSON.stringify({ mcpServers: { "aurora-odds": { type: "http", url: ENDPOINT } } }, null, 2);
+const PUBLIC_ENDPOINT = `${location.origin}/mcp`;
+const REPLAY = new URLSearchParams(location.search).get("replay") === "may2024" ? "may2024" : null;
+// Calls go to the replay endpoint while replaying; the endpoint shown for clients is always the live one.
+const ENDPOINT = REPLAY ? `${location.origin}/replay/${REPLAY}/mcp` : PUBLIC_ENDPOINT;
+document.getElementById("ep").textContent = PUBLIC_ENDPOINT;
+document.getElementById("config").textContent = JSON.stringify({ mcpServers: { "aurora-odds": { type: "http", url: PUBLIC_ENDPOINT } } }, null, 2);
+if (REPLAY) {
+  document.getElementById("banner").hidden = false;
+  document.getElementById("replay-link").hidden = true;
+  const chips = document.querySelectorAll(".chip");
+  ["Can I see the northern lights in London right now?", "Is it worth going out in Edinburgh tonight?", "What is the Sun doing?", "Can I see the aurora in Denver right now?"].forEach((q, i) => chips[i] && (chips[i].textContent = q));
+}
 
 // ---- a minimal MCP client: JSON-RPC over Streamable HTTP ----
 let nextId = 1;
@@ -340,7 +359,7 @@ whereBtn.addEventListener("click", async () => {
 
 /** The Alexa+-style path: the model on the server picks the tool, which is then called over MCP. */
 async function viaAssistant(text) {
-  const r = await fetch("/assistant", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, ...(device ?? {}) }) });
+  const r = await fetch("/assistant", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, ...(device ?? {}), ...(REPLAY ? { replay: REPLAY } : {}) }) });
   if (!r.ok) throw new Error(`assistant ${r.status}`);
   const j = await r.json();
   const MODEL_NAMES = { "@cf/meta/llama-3.3-70b-instruct-fp8-fast": "Llama 3.3 70B", "@cf/meta/llama-4-scout-17b-16e-instruct": "Llama 4 Scout" };
@@ -400,7 +419,7 @@ async function ask(text) {
 document.getElementById("form").addEventListener("submit", (e) => { e.preventDefault(); const q = document.getElementById("q"); ask(q.value); q.value = ""; });
 document.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => ask(c.textContent)));
 document.getElementById("copy").addEventListener("click", async (e) => {
-  try { await navigator.clipboard.writeText(ENDPOINT); e.target.textContent = "Copied"; setTimeout(() => (e.target.textContent = "Copy"), 1500); } catch { /* clipboard blocked */ }
+  try { await navigator.clipboard.writeText(PUBLIC_ENDPOINT); e.target.textContent = "Copied"; setTimeout(() => (e.target.textContent = "Copy"), 1500); } catch { /* clipboard blocked */ }
 });
 
 // ---- voice input ----

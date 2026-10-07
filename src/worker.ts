@@ -7,6 +7,8 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createServer, SERVER_INFO } from "./server.ts";
 import { answer, MODELS, type Ai } from "./assistant.ts";
+import { REPLAYS, replaySources } from "./replay.ts";
+import { liveSources } from "./sources.ts";
 
 const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
@@ -34,6 +36,14 @@ export async function handleMcp(request: Request, makeServer: () => McpServer = 
   }
 }
 
+/** /replay/<name>/mcp serves the same tools on a recorded night with the clock stopped. */
+export function serverFor(pathname: string): (() => McpServer) | null {
+  if (pathname === "/mcp" || pathname === "/mcp/") return createServer;
+  const m = pathname.match(/^\/replay\/([a-z0-9]+)\/mcp\/?$/);
+  const replay = m ? REPLAYS[m[1]] : undefined;
+  return replay ? () => createServer(replaySources(liveSources, replay), () => new Date(replay.at)) : null;
+}
+
 // A light guard for the free model quota: per isolate, per caller, per minute.
 const recent = new Map<string, number[]>();
 function tooMany(key: string, perMinute = 12): boolean {
@@ -49,7 +59,7 @@ async function handleAssistant(request: Request, url: URL, ai: Ai): Promise<Resp
   if (tooMany(request.headers.get("cf-connecting-ip") ?? "local")) {
     return Response.json({ error: "Too many questions in a minute. Try again shortly." }, { status: 429 });
   }
-  let body: { text?: unknown; latitude?: unknown; longitude?: unknown; model?: unknown };
+  let body: { text?: unknown; latitude?: unknown; longitude?: unknown; model?: unknown; replay?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -63,9 +73,11 @@ async function handleAssistant(request: Request, url: URL, ai: Ai): Promise<Resp
   // The assistant talks to the MCP endpoint over Streamable HTTP; the fetch is routed in-process because a Worker
   // cannot call its own hostname.
   const models = typeof body.model === "string" && MODELS.includes(body.model) ? [body.model] : undefined;
+  const path = typeof body.replay === "string" && REPLAYS[body.replay] ? `/replay/${body.replay}/mcp` : "/mcp";
+  const makeServer = serverFor(path) ?? createServer;
   const reply = await answer(
     { text, latitude, longitude },
-    { ai, mcpUrl: `${url.origin}/mcp`, fetch: (input, init) => handleMcp(new Request(input, init)), models },
+    { ai, mcpUrl: `${url.origin}${path}`, fetch: (input, init) => handleMcp(new Request(input, init), makeServer), models },
   );
   return Response.json(reply);
 }
@@ -79,9 +91,10 @@ export default {
   async fetch(request: Request, env: Env = {}): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
-    if (url.pathname === "/mcp" || url.pathname === "/mcp/") {
+    const makeServer = serverFor(url.pathname);
+    if (makeServer) {
       try {
-        return withCors(await handleMcp(request));
+        return withCors(await handleMcp(request, makeServer));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return withCors(Response.json({ jsonrpc: "2.0", error: { code: -32603, message }, id: null }, { status: 500 }));
