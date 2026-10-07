@@ -325,18 +325,22 @@ function cardsFor(tool, s) {
       card("By eye", pct(s.chance_eyes), `next hour · needs Kp ${s.kp_needed_eyes}`, s.chance_eyes >= 0.25),
       card("Phone camera", pct(s.chance_camera), `needs Kp ${s.kp_needed_camera}`, s.chance_camera >= 0.35),
       card("Sky", s.dark ? "Dark" : "Light",
-        [s.dark ? null : s.dark_from_local ? `dark at ${s.dark_from_local}` : "no night today", s.cloud_cover_pct == null ? null : `${s.cloud_cover_pct}% cloud`].filter(Boolean).join(" · ") || "clear enough",
-        s.dark && (s.cloud_cover_pct ?? 0) < 70),
+        !s.dark ? (s.dark_from_local ? `dark at ${s.dark_from_local}` : "no night today") : s.cloud_cover_pct == null ? "no cloud data" : `${s.cloud_cover_pct}% cloud`,
+        s.dark && s.cloud_cover_pct != null && s.cloud_cover_pct < 70),
       card("Look", s.look.compass, s.look.overhead ? "overhead" : s.look.visible ? `edge ${Math.max(0, Math.round(s.look.lowerDeg))}° up` : "below the horizon", false),
     ].join("")}</div>`;
   }
   if (tool === "plan_aurora_tonight") {
     const w = s.best_window;
+    // the night's peak, the same hour the spoken answer names
+    const peak = (s.hours ?? []).filter((h) => h.dark).reduce((p, h) => (h.kp_expected > (p?.kp_expected ?? -1) ? h : p), null);
     return `<div class="cards">${[
       card("Dark", s.dark_from_local ?? "–", s.dark_until_local ? `until ${s.dark_until_local}` : "", !!s.dark_from_local),
-      card("Needs", `Kp ${s.kp_needed_eyes}`, `camera Kp ${s.kp_needed_camera}`, false),
-      card("Best window", w ? `${w.from_local}` : "None", w ? `to ${w.to_local}` : "quiet night", !!w && w.enough_for !== "neither"),
-      card("Peak", w ? `Kp ${w.kp_expected}` : "–", w && w.cloud_cover_pct != null ? `${w.cloud_cover_pct}% cloud` : "", false),
+      s.kp_needed_eyes < 0.5
+        ? card("Needs", "Any Kp", "under the oval", true)
+        : card("Needs", `Kp ${s.kp_needed_eyes}`, `camera Kp ${s.kp_needed_camera}`, false),
+      card("Best window", w ? `${w.from_local}` : "None", w ? `to ${w.to_local}${w.cloud_cover_pct != null ? ` · ${w.cloud_cover_pct}% cloud` : ""}` : "quiet night", !!w && w.enough_for !== "neither"),
+      card("Peak", peak ? `Kp ${peak.kp_expected}` : "–", peak ? `around ${peak.local_time}` : "", !!peak && peak.kp_expected >= s.kp_needed_eyes),
     ].join("")}</div>`;
   }
   return `<div class="cards">${[
