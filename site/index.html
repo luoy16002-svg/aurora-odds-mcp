@@ -78,6 +78,11 @@ h1 em { font-style: normal; color: var(--accent); }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
 .chip { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 999px; padding: 6px 12px; font-size: 13.5px; cursor: pointer; }
 .chip:hover { color: var(--text); border-color: #2a3a4f; }
+.where { margin: 6px 0 0; border: 0; background: none; color: var(--faint); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; padding: 4px 0; }
+.where:hover { color: var(--muted); }
+.where[aria-pressed="true"] { color: var(--accent); }
+.trace .k { display: inline-block; min-width: 3.6em; color: var(--faint); }
+.trace div + div { margin-top: 2px; }
 .turns { margin-top: 18px; display: grid; gap: 14px; min-height: 120px; }
 .turn { display: grid; gap: 6px; }
 .who { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); }
@@ -85,7 +90,7 @@ h1 em { font-style: normal; color: var(--accent); }
 .reply { font-size: 17.5px; line-height: 1.55; }
 .reply.wait { color: var(--faint); }
 .reply.err { color: var(--warn); }
-.trace { font-family: "JetBrains Mono", monospace; font-size: 12.5px; color: var(--faint); background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 8px 12px; overflow-x: auto; white-space: nowrap; }
+.trace { font-family: "JetBrains Mono", monospace; font-size: 12.5px; line-height: 1.5; color: var(--faint); background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 8px 12px; overflow-wrap: anywhere; }
 .trace b { color: var(--accent); font-weight: 500; }
 .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .card { border: 1px solid var(--line); border-radius: var(--radius-s); padding: 10px 12px; background: var(--bg-2); }
@@ -165,8 +170,9 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
           <button class="chip" type="button">What is the Sun doing?</button>
           <button class="chip" type="button">Southern lights in Hobart tonight?</button>
         </div>
+        <button class="where" id="where" type="button" aria-pressed="false"><i class="ph ph-map-pin"></i><span>Use my location</span></button>
         <div class="turns" id="turns"><div class="empty"><i class="ph ph-moon-stars"></i>Answers appear here and are read aloud.</div></div>
-        <p class="note">Alexa+ picks the tool with its own language model. This page routes your words with a few keywords, so you can try the same MCP server without an account.</p>
+        <p class="note">As in Alexa+, a language model (Llama 3.3 70B on Cloudflare Workers AI) decides which tool to call and with what. The sentence you hear is the MCP server's own, never the model's. If the model is busy, the page falls back to simple keyword matching.</p>
       </div>
     </div>
   </div>
@@ -321,6 +327,50 @@ function cardsFor(tool, s) {
     card("NOAA 3-day", s.noaa.max_kp_next_72h == null ? "–" : `Kp ${s.noaa.max_kp_next_72h}`, "peak", (s.noaa.max_kp_next_72h ?? 0) >= 5),
   ].join("")}</div>`;
 }
+// ---- device location, as a smart speaker would know it ----
+let device = null;
+const whereBtn = document.getElementById("where");
+whereBtn.addEventListener("click", async () => {
+  if (device) { device = null; whereBtn.setAttribute("aria-pressed", "false"); whereBtn.querySelector("span").textContent = "Use my location"; return; }
+  whereBtn.querySelector("span").textContent = "Finding you…";
+  device = await locate();
+  whereBtn.setAttribute("aria-pressed", device ? "true" : "false");
+  whereBtn.querySelector("span").textContent = device ? `Using your location (${device.latitude.toFixed(1)}°, ${device.longitude.toFixed(1)}°)` : "Location unavailable";
+});
+
+/** The Alexa+-style path: the model on the server picks the tool, which is then called over MCP. */
+async function viaAssistant(text) {
+  const r = await fetch("/assistant", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, ...(device ?? {}) }) });
+  if (!r.ok) throw new Error(`assistant ${r.status}`);
+  const j = await r.json();
+  const MODEL_NAMES = { "@cf/meta/llama-3.3-70b-instruct-fp8-fast": "Llama 3.3 70B", "@cf/meta/llama-4-scout-17b-16e-instruct": "Llama 4 Scout" };
+  const model = MODEL_NAMES[j.model] ?? (j.model ?? "").split("/").pop();
+  const trace = j.tool
+    ? `<div><span class="k">model</span>${esc(model)} chose <b>${esc(j.tool)}</b> ${esc(JSON.stringify(j.arguments))} · ${j.ms.model} ms</div><div><span class="k">mcp</span>tools/call over Streamable HTTP · ${j.ms.tool} ms</div>`
+    : `<div><span class="k">model</span>${esc(model)} answered without a tool · ${j.ms.model} ms</div>`;
+  return { speech: j.speech, isError: j.isError, tool: j.tool, structured: j.structuredContent, trace };
+}
+
+/** Fallback: keyword routing in the page, calling the MCP endpoint directly from the browser. */
+async function viaKeywords(text) {
+  const { tool, place, here } = route(text);
+  const args = {};
+  if (place) args.place = place;
+  else if (device) Object.assign(args, device);
+  else if (here) Object.assign(args, (await locate()) ?? {});
+  const t0 = performance.now();
+  await connect();
+  const result = await rpc("tools/call", { name: tool, arguments: args });
+  const ms = Math.round(performance.now() - t0);
+  return {
+    speech: result.content?.[0]?.text ?? "",
+    isError: result.isError,
+    tool,
+    structured: result.structuredContent,
+    trace: `<div><span class="k">words</span>keyword match chose <b>${tool}</b> ${esc(JSON.stringify(args))}</div><div><span class="k">mcp</span>tools/call over Streamable HTTP · ${ms} ms</div>`,
+  };
+}
+
 async function ask(text) {
   if (!text.trim()) return;
   if (turns.querySelector(".empty")) turns.innerHTML = "";
@@ -329,24 +379,22 @@ async function ask(text) {
   turn.innerHTML = `<div class="who">You</div><div class="you">${esc(text)}</div><div class="who">Aurora Odds</div><div class="reply wait">Checking the sky…</div>`;
   turns.prepend(turn);
   const reply = turn.querySelector(".reply");
-  const { tool, place, here } = route(text);
-  const args = {};
-  if (place) args.place = place;
-  if (here) Object.assign(args, (await locate()) ?? {});
-  const t0 = performance.now();
+  let out;
   try {
-    await connect();
-    const result = await rpc("tools/call", { name: tool, arguments: args });
-    const ms = Math.round(performance.now() - t0);
-    const speech = result.content?.[0]?.text ?? "";
-    reply.className = result.isError ? "reply err" : "reply";
-    reply.textContent = speech;
-    turn.insertAdjacentHTML("beforeend", `<div class="trace">tools/call <b>${tool}</b> ${esc(JSON.stringify(args))} · ${ms} ms</div>${result.isError ? "" : cardsFor(tool, result.structuredContent)}`);
-    say(speech);
-  } catch (e) {
-    reply.className = "reply err";
-    reply.textContent = `Something went wrong reaching the server: ${e.message}`;
+    out = await viaAssistant(text);
+  } catch {
+    try {
+      out = await viaKeywords(text);
+    } catch (e) {
+      reply.className = "reply err";
+      reply.textContent = "I couldn't reach the server just now. Please try again in a minute.";
+      return;
+    }
   }
+  reply.className = out.isError ? "reply err" : "reply";
+  reply.textContent = out.speech;
+  turn.insertAdjacentHTML("beforeend", `<div class="trace">${out.trace}</div>${out.isError || !out.tool ? "" : cardsFor(out.tool, out.structured)}`);
+  say(out.speech);
 }
 
 document.getElementById("form").addEventListener("submit", (e) => { e.preventDefault(); const q = document.getElementById("q"); ask(q.value); q.value = ""; });

@@ -10,7 +10,7 @@ Space-weather alerts say things like "G2 watch, Kp 6 expected". That doesn't tel
 >
 > *(the answer for 10 May 2024 at 11 pm, replayed from the test fixtures)*
 
-- **Try it:** https://aurora-odds-mcp.pages.dev (type or speak a question; the page calls the same MCP endpoint)
+- **Try it:** https://aurora-odds-mcp.pages.dev. Speak or type a question; a language model picks the tool, the MCP server answers, and the page reads the answer aloud.
 - **Endpoint:** `https://aurora-odds-mcp.pages.dev/mcp`. Streamable HTTP, MCP spec `2025-11-25`, stateless, no key.
 - **Built for:** Alexa+ and any other MCP client.
 
@@ -54,14 +54,34 @@ npx @modelcontextprotocol/inspector
 
 The server's `instructions` tell the model which tool fits which question and ask it to read `speech` unchanged, so an assistant doesn't paraphrase "a 5 percent chance" into "a good chance".
 
+## The voice demo, a stand-in for Alexa+
+
+Alexa+ decides which MCP tool to call with its own language model. The demo page does the same thing so the whole loop can be tried without a device:
+
+```
+you speak ──► browser speech recognition ──► POST /assistant
+  ──► Llama 3.3 70B on Cloudflare Workers AI reads your words and the tools from tools/list
+  ──► picks one tool and its arguments
+  ──► the host calls that tool over MCP (Streamable HTTP, the same /mcp endpoint any client uses)
+  ──► the tool's speech is read aloud by the browser
+```
+
+The model chooses; it never talks about the sky itself. `src/assistant.ts` holds it to that:
+
+- What you hear is the tool's `speech`. If the model answers without a tool, only a short clarifying question gets through; anything else becomes a fixed "I can help with the northern and southern lights" line.
+- A place must be one you said. In testing, Llama sometimes filled in "unknown" (a geocoder then found a village called Unknown) or a town of its own choosing. Those are dropped, and the device location is used instead, or the server asks which town you mean.
+- If the model is busy or the free quota is used up, the page falls back to keyword matching and calls `/mcp` straight from the browser.
+
+`test/assistant-eval.ts` asks a deployment twelve spoken questions and checks the tool, the place, the question back when no place is known, and the refusal for off-topic questions. On 7 October 2026 both Llama 3.3 70B and Llama 4 Scout passed 11 of 12. Llama 3.3 answered "What's the weather like in Paris?" with the aurora odds for Paris, and in another run it handled that question but invented a town for "Can I see the aurora tonight?", which the place check now catches. Llama 4 Scout ignored a shared device location. The demo uses Llama 3.3, because a voice assistant usually knows where it is.
+
 ## Run it yourself
 
 Node 22.18 or later (the source is TypeScript that Node runs directly).
 
 ```sh
 npm install
-npm test           # 10 tests over an in-memory MCP client, with recorded data
-npm run dev        # http://localhost:8787 (page) and http://localhost:8787/mcp (endpoint)
+npm test           # 18 tests: MCP over an in-memory client, and the voice host over Streamable HTTP, with recorded data
+npm run dev        # http://localhost:8787 (page) and http://localhost:8787/mcp (endpoint); no model here, so the page uses keywords
 node test/live-smoke.ts                                   # asks the local server five real questions
 MCP_URL=https://aurora-odds-mcp.pages.dev/mcp node test/live-smoke.ts   # or the deployed one
 ```
@@ -71,6 +91,8 @@ Deploy to Cloudflare Pages (free plan is plenty):
 ```sh
 npm run build                                        # bundles src/worker.ts into site/_worker.js
 npx wrangler pages deploy site --project-name <your-project>
+npx wrangler pages dev site                          # local run with the Workers AI binding from wrangler.toml
+node test/assistant-eval.ts https://<your-project>.pages.dev
 ```
 
 `src/worker.ts` is a plain `fetch` handler, so the same code runs on Cloudflare (Pages or Workers), Deno, Bun, or Node through `src/dev.ts`.
@@ -89,12 +111,14 @@ Upstream calls time out after 6 seconds and retry once; results are cached per i
 ```
 src/
   server.ts    MCP server: tools, schemas, resources, instructions
+  assistant.ts the voice host: a model picks the tool, an MCP client calls it
   report.ts    numbers -> verdict -> speech
   sources.ts   forecast, NOAA Kp, Open-Meteo, with timeouts, retry and cache
-  worker.ts    Streamable HTTP endpoint (stateless, JSON responses, CORS), /health, static page
+  worker.ts    Streamable HTTP endpoint (stateless, JSON responses, CORS), /assistant, /health, static page
   dev.ts       local server on Node
 site/          the demo page (index.html) and the built worker
-test/          MCP tests with fixtures (the May 2024 superstorm, a quiet October day) and a live smoke test
+test/          MCP and assistant tests with fixtures (the May 2024 superstorm, a quiet October day), a live smoke
+               test and the assistant eval
 ```
 
 ## Built during the hackathon

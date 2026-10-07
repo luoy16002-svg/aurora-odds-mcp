@@ -2,3 +2,7 @@
 name = "aurora-odds-mcp"
 pages_build_output_dir = "site"
 compatibility_date = "2025-12-01"
+
+# Workers AI: the voice demo's model picks which MCP tool to call (/assistant). The MCP endpoint itself needs nothing.
+[ai]
+binding = "AI"
