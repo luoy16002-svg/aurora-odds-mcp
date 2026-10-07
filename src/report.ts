@@ -292,7 +292,11 @@ export function planTonight(args: { place: Place; nowcast: Nowcast; weather: Wea
     parts.push(`Tonight in ${name} it's dark ${fromText}${darkUntil ? ` until about ${spokenTime(roundTo5(darkUntil), offset)}` : ""}.`);
     parts.push(needEyes < 0.5
       ? `${name} sits under the auroral oval, so even modest activity can light up the sky.`
-      : `You'd need activity around Kp ${needEyes.toFixed(1)} to see it by eye, or ${needCamera.toFixed(1)} for a phone camera.`);
+      : needEyes <= 9
+        ? `You'd need activity around Kp ${needEyes.toFixed(1)} to see it by eye, or ${needCamera.toFixed(1)} for a phone camera.`
+        : needCamera <= 9
+          ? `Even a phone camera would need activity around Kp ${needCamera.toFixed(1)} there, and seeing it by eye takes one of the strongest storms of a decade.`
+          : `The aurora very rarely reaches ${name}: it takes one of the strongest storms of a decade.`);
     if (peak) {
       const storm = stormWord(peak.kp_expected);
       parts.push(`The forecast peaks at about Kp ${peak.kp_expected.toFixed(1)}${storm ? `, ${storm},` : ""} around ${peak.local_time}${peak.kp_source === "noaa" ? ", according to NOAA's outlook" : ""}.`);
